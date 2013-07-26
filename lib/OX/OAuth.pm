@@ -12,6 +12,8 @@ $Net::OAuth::PROTOCOL_VERSION = Net::OAuth::PROTOCOL_VERSION_1_0A; # requires ca
 use HTTP::Request::Common;
 use JSON -support_by_pp;
 use File::Slurp;
+use HTTP::Cookies;
+use URI::Split qw(uri_split uri_join);
 
 =head1 NAME
 
@@ -36,10 +38,13 @@ For example:
 
     # hard-code config
     my $hardcode_config = {
-	api_url => 'https://prod-console.openx.com/ox/3.0',
-	sso_url => 'https://sso.openx.com/'
-	email => 'you@your.dom',
-	password => 'secret',
+        api_url    => 'http://oxdemo-ui.openxenterprise.com/ox/3.0',
+        sso_url    => 'https://sso.openx.com/',
+        email      => 'you@your.dom',
+        password   => 'password',
+        api_key    => 'key',
+        api_secret => 'secret',
+        cookiejar  => '/tmp/cookiejar.txt',
     };
 	
     # or read it from a json file
@@ -140,7 +145,7 @@ sub new {
 		}
 
 		# optional
-		foreach my $key (qw(request_token_url realm access_token_url authorize_url login_url)) {
+		foreach my $key (qw(request_token_url realm access_token_url authorize_url login_url cookiejar)) {
 			$self->{$key} = $config->{$key};
 		}
 
@@ -203,11 +208,18 @@ sub login {
 	my $access_token_url	= $self->{access_token_url};
 	my $authorize_url	= $self->{authorize_url};
 	my $login_url		= $self->{login_url};
+	my $cookiejar           = $self->{cookiejar};
 
 	my $ua = LWP::UserAgent->new;
 	$ua->agent("ox-oauth-perl/$VERSION");
-	$ua->cookie_jar( {} );	# ephemeral cookies
+	$ua->cookie_jar( HTTP::Cookies->new( 'file' => $cookiejar, 'autosave' => 1, ));
 	$self->{_ua} = $ua;	# reused user agent
+
+        # Check if there is a valid cookie in the cookiejar, and if so, just continue using it
+        my $response = $ua->request(PUT $self->{api_url} . '/a/session/validate');
+        if ($response->is_success) {
+	    return 1
+        }
 
 	#
 	# request token
@@ -313,7 +325,9 @@ sub login {
 	}
 
 	$self->{token} = $oauth_access_token;
-	$ua->default_header('Cookie' => "openx3_access_token=$oauth_access_token"); # the normal cookie jar uses a format that breaks something
+
+	my ($scheme, $domain, $path, $query, $frag) = uri_split($api_url);
+	$ua->cookie_jar->set_cookie(1, 'openx3_access_token', $oauth_access_token, '/', $domain);
 
 	#
 	# validate with ox3 api, almost done
