@@ -1,5 +1,9 @@
 Revision History for OX-OAuth
 
+0.68    26 Jul 2013
+- Added cookiejar support
+- Updated README etc
+
 0.67	3 Oct 2011 19:36 PDT
 - add github URL
 - better pod SYNOPSIS
